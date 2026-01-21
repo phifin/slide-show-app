@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">red-slideshow</string>
+    <string name="title_activity_main">red-slideshow</string>
+    <string name="package_name">com.yourcompany.redslideshow</string>
+    <string name="custom_url_scheme">com.yourcompany.redslideshow</string>
+</resources>
