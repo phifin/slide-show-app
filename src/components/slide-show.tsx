@@ -32,6 +32,7 @@ type IncomingState = {
 };
 
 async function waitFirstVideoFrame(el: HTMLVideoElement, timeoutMs: number) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const anyEl = el as any;
 
   if (typeof anyEl.requestVideoFrameCallback === "function") {
@@ -173,11 +174,15 @@ export function Slideshow({
 
         try {
           el.pause();
-        } catch {}
+        } catch {
+          // ignore
+        }
 
         try {
           el.currentTime = 0;
-        } catch {}
+        } catch {
+          // ignore
+        }
 
         const p = el.play();
         if (p instanceof Promise) await p.catch(() => {});
@@ -186,11 +191,15 @@ export function Slideshow({
 
         try {
           el.pause();
-        } catch {}
+        } catch {
+          // ignore
+        }
 
         try {
           el.currentTime = 0;
-        } catch {}
+        } catch {
+          // ignore
+        }
 
         if (!cancelled) markReady();
       } catch {
