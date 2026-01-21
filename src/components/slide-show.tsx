@@ -8,23 +8,6 @@ type MediaItem = {
   muted?: boolean;
 };
 
-interface VideoFrameMetadata {
-  presentationTime: number;
-  expectedDisplayTime: number;
-  width: number;
-  height: number;
-  mediaTime: number;
-  presentedFrames: number;
-  processingDuration?: number;
-}
-
-interface HTMLVideoElementWithCallback extends HTMLVideoElement {
-  requestVideoFrameCallback(
-    callback: (now: number, metadata: VideoFrameMetadata) => void,
-  ): number;
-  cancelVideoFrameCallback(handle: number): void;
-}
-
 const NO_CONTROLS_STYLE = `
   video::-webkit-media-controls { display: none !important; }
   video::-webkit-media-controls-play-button { display: none !important; }
@@ -123,67 +106,6 @@ function prefetchMedia(item: MediaItem) {
   }
 }
 
-async function waitForVideoFrame(video: HTMLVideoElement): Promise<void> {
-  return new Promise((resolve) => {
-    if (video.readyState >= 2 && video.currentTime > 0) {
-      resolve();
-      return;
-    }
-
-    let resolved = false;
-    const cleanup = () => {
-      video.removeEventListener("loadeddata", onData);
-      video.removeEventListener("canplay", onData);
-      video.removeEventListener("playing", onData);
-    };
-
-    const onData = () => {
-      if (resolved) return;
-
-      const videoWithCallback = video as HTMLVideoElementWithCallback;
-      if (videoWithCallback.requestVideoFrameCallback) {
-        videoWithCallback.requestVideoFrameCallback(() => {
-          resolved = true;
-          cleanup();
-          resolve();
-        });
-      } else {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            resolved = true;
-            cleanup();
-            resolve();
-          });
-        });
-      }
-    };
-
-    video.addEventListener("loadeddata", onData);
-    video.addEventListener("canplay", onData);
-    video.addEventListener("playing", onData);
-
-    if (video.paused) {
-      const playPromise = video.play();
-      if (playPromise) {
-        playPromise
-          .then(() => {
-            video.pause();
-            video.currentTime = 0;
-          })
-          .catch(() => {});
-      }
-    }
-
-    setTimeout(() => {
-      if (!resolved) {
-        resolved = true;
-        cleanup();
-        resolve();
-      }
-    }, 4000);
-  });
-}
-
 export function Slideshow({
   items,
   intervalSec,
@@ -224,6 +146,7 @@ export function Slideshow({
   const shownIsImage = shownItem?.type === "image";
   const shownIsVideo = shownItem?.type === "video";
 
+  // Preload item kế tiếp
   useEffect(() => {
     if (!safeLen) return;
     const nextI = nextIndex(shownIdx, safeLen);
@@ -247,6 +170,7 @@ export function Slideshow({
     scheduleNext(nextIndex(shownIdx, safeLen));
   };
 
+  // Xử lý incoming media
   useEffect(() => {
     if (!incoming) return;
 
@@ -259,7 +183,7 @@ export function Slideshow({
       setIncoming((p) => (p && !p.ready ? { ...p, ready: true } : p));
     };
 
-    const timeoutMs = incoming.item.type === "video" ? 4000 : 2000;
+    const timeoutMs = incoming.item.type === "video" ? 3000 : 2000;
     fallbackTimer = setTimeout(() => {
       console.warn("Media load timeout");
       markReady();
@@ -280,34 +204,33 @@ export function Slideshow({
       };
     }
 
+    // VIDEO: Load và đợi sẵn sàng
     const el = incomingVideoRef.current;
     if (!el) return;
 
     const prepareVideo = async () => {
       try {
+        // Set src và load
+        el.src = incoming.item.src;
         el.load();
 
-        await new Promise((resolve, reject) => {
+        // Đợi có đủ data
+        await new Promise<void>((resolve, reject) => {
           const onReady = () => {
-            el.removeEventListener("canplay", onReady);
-            el.removeEventListener("error", onErr);
-            resolve(null);
+            cleanup();
+            resolve();
           };
           const onErr = () => {
-            el.removeEventListener("canplay", onReady);
-            el.removeEventListener("error", onErr);
+            cleanup();
             reject();
           };
-          el.addEventListener("canplay", onReady);
+          const cleanup = () => {
+            el.removeEventListener("loadeddata", onReady);
+            el.removeEventListener("error", onErr);
+          };
+          el.addEventListener("loadeddata", onReady);
           el.addEventListener("error", onErr);
         });
-
-        el.muted = true;
-        await el.play();
-        await waitForVideoFrame(el);
-
-        el.pause();
-        el.currentTime = 0;
 
         if (!cancelled) markReady();
       } catch (err) {
@@ -324,15 +247,24 @@ export function Slideshow({
     };
   }, [incoming?.key]);
 
+  // Swap sau khi ready
   useEffect(() => {
     if (!incoming?.ready) return;
+
+    // Pause video cũ trước khi transition
+    if (shownIsVideo && activeVideoRef.current) {
+      activeVideoRef.current.pause();
+    }
+
     const t = setTimeout(() => {
       setIdx(incoming.idx);
       setIncoming(null);
     }, 560);
-    return () => clearTimeout(t);
-  }, [incoming?.ready, incoming?.idx]);
 
+    return () => clearTimeout(t);
+  }, [incoming?.ready, incoming?.idx, shownIsVideo]);
+
+  // Auto timer cho IMAGE
   useEffect(() => {
     if (!playing || !shownIsImage) return;
     if (!safeLen || safeLen <= 1) return;
@@ -360,13 +292,19 @@ export function Slideshow({
   useEffect(() => {
     const el = activeVideoRef.current;
     if (!el || !shownIsVideo) return;
-    if (!playing) {
+    if (!playing || incoming?.ready) {
       el.pause();
       return;
     }
-    const r = el.play();
-    if (r instanceof Promise) r.catch(() => {});
-  }, [playing, shownIsVideo, shownKey]);
+
+    // Đợi một chút để đảm bảo element đã mount
+    const timer = setTimeout(() => {
+      const r = el.play();
+      if (r instanceof Promise) r.catch(() => {});
+    }, 150);
+
+    return () => clearTimeout(timer);
+  }, [playing, shownIsVideo, shownKey, incoming?.ready]);
 
   const handleVideoEnded = () => {
     if (!playing) return;
@@ -433,10 +371,10 @@ export function Slideshow({
           />
         ) : (
           <video
+            key={shownKey}
             ref={activeVideoRef}
             src={shownItem.src}
             poster={TRANSPARENT_PIXEL}
-            autoPlay={playing}
             playsInline
             webkit-playsinline="true"
             x5-playsinline="true"
@@ -475,10 +413,10 @@ export function Slideshow({
             />
           ) : (
             <video
+              key={incoming.key}
               ref={incomingVideoRef}
               src={incoming.item.src}
               poster={TRANSPARENT_PIXEL}
-              autoPlay={false}
               playsInline
               webkit-playsinline="true"
               x5-playsinline="true"
