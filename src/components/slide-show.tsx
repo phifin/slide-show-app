@@ -31,6 +31,50 @@ type IncomingState = {
   ready: boolean;
 };
 
+async function waitFirstVideoFrame(el: HTMLVideoElement, timeoutMs: number) {
+  const anyEl = el as any;
+
+  if (typeof anyEl.requestVideoFrameCallback === "function") {
+    await new Promise<void>((resolve) => {
+      let done = false;
+      const t = setTimeout(() => {
+        if (done) return;
+        done = true;
+        resolve();
+      }, timeoutMs);
+
+      anyEl.requestVideoFrameCallback(() => {
+        if (done) return;
+        done = true;
+        clearTimeout(t);
+        resolve();
+      });
+    });
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    let done = false;
+    const t = setTimeout(() => {
+      if (done) return;
+      done = true;
+      resolve();
+    }, timeoutMs);
+
+    const on = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(t);
+      el.removeEventListener("timeupdate", on);
+      el.removeEventListener("playing", on);
+      resolve();
+    };
+
+    el.addEventListener("timeupdate", on, { once: true });
+    el.addEventListener("playing", on, { once: true });
+  });
+}
+
 export function Slideshow({
   items,
   intervalSec,
@@ -96,7 +140,7 @@ export function Slideshow({
     if (!incoming) return;
 
     let cancelled = false;
-    const timeoutMs = incoming.item.type === "video" ? 3000 : 2000;
+    const timeoutMs = incoming.item.type === "video" ? 4500 : 2000;
 
     const markReady = () => {
       if (cancelled) return;
@@ -124,7 +168,30 @@ export function Slideshow({
       try {
         el.src = incoming.item.src;
         el.load();
+
         await waitVideoReady(el, timeoutMs);
+
+        try {
+          el.pause();
+        } catch {}
+
+        try {
+          el.currentTime = 0;
+        } catch {}
+
+        const p = el.play();
+        if (p instanceof Promise) await p.catch(() => {});
+
+        await waitFirstVideoFrame(el, 350);
+
+        try {
+          el.pause();
+        } catch {}
+
+        try {
+          el.currentTime = 0;
+        } catch {}
+
         if (!cancelled) markReady();
       } catch {
         if (!cancelled) markReady();
