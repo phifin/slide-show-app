@@ -1,0 +1,67 @@
+.slideshow-root {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+}
+
+.slideshow-layer {
+  position: absolute;
+  inset: 0;
+  will-change: opacity, transform;
+  transform: translateZ(0);
+}
+
+.slideshow-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  background: #000;
+  pointer-events: none;
+}
+
+.slideshow-img {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+}
+
+.slideshow-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.55),
+    rgba(0, 0, 0, 0) 32%,
+    rgba(0, 0, 0, 0) 68%,
+    rgba(0, 0, 0, 0.7)
+  );
+}
+
+.slideshow-capture {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+}
+
+.slideshow-no-controls video::-webkit-media-controls {
+  display: none !important;
+}
+.slideshow-no-controls video::-webkit-media-controls-play-button {
+  display: none !important;
+}
+.slideshow-no-controls video::-webkit-media-controls-start-playback-button {
+  display: none !important;
+}
+.slideshow-no-controls video::-webkit-media-controls-overlay-play-button {
+  display: none !important;
+}
+.slideshow-no-controls video::-webkit-media-controls-enclosure {
+  display: none !important;
+}
+.slideshow-no-controls video::-webkit-media-controls-panel {
+  display: none !important;
+}

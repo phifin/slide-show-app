@@ -1,24 +1,17 @@
-import { motion, type TargetAndTransition } from "framer-motion";
+import { motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { TransitionMode } from "./setting-sheet";
 
-type MediaItem = {
-  type: "image" | "video";
-  src: string;
-  muted?: boolean;
-};
-
-const NO_CONTROLS_STYLE = `
-  video::-webkit-media-controls { display: none !important; }
-  video::-webkit-media-controls-play-button { display: none !important; }
-  video::-webkit-media-controls-start-playback-button { display: none !important; }
-  video::-webkit-media-controls-overlay-play-button { display: none !important; }
-  video::-webkit-media-controls-enclosure { display: none !important; }
-  video::-webkit-media-controls-panel { display: none !important; }
-`;
-
-const TRANSPARENT_PIXEL =
-  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+import "../css/slide-show.css";
+import {
+  keyOf,
+  nextIndex,
+  prefetchMedia,
+  TRANSPARENT_PIXEL,
+  waitVideoReady,
+  type MediaItem,
+} from "../utils/slide-show.media";
+import { getMotionTriplet } from "../utils/slide.motion";
 
 type Props = {
   items: MediaItem[];
@@ -31,80 +24,12 @@ type Props = {
   transitionMode: TransitionMode;
 };
 
-function nextIndex(i: number, len: number) {
-  return len <= 0 ? 0 : (i + 1) % len;
-}
-
-type MotionTriplet = {
-  initial: TargetAndTransition;
-  animate: TargetAndTransition;
-  exit: TargetAndTransition;
-};
-
-function getMotionTriplet(
-  mode: TransitionMode,
-  isImage: boolean,
-  kenBurns: boolean,
-): MotionTriplet {
-  if (mode === "slide") {
-    return {
-      initial: { opacity: 0, x: 60 },
-      animate: { opacity: 1, x: 0 },
-      exit: { opacity: 0, x: -60 },
-    };
-  }
-
-  if (mode === "flip") {
-    return {
-      initial: { opacity: 0, rotateY: -70, x: 40, transformPerspective: 1200 },
-      animate: { opacity: 1, rotateY: 0, x: 0, transformPerspective: 1200 },
-      exit: { opacity: 0, rotateY: 70, x: -40, transformPerspective: 1200 },
-    };
-  }
-
-  if (mode === "zoom") {
-    return {
-      initial: { opacity: 0, scale: 0.97 },
-      animate: { opacity: 1, scale: 1 },
-      exit: { opacity: 0, scale: 1.03 },
-    };
-  }
-
-  if (mode === "pan") {
-    return {
-      initial: { opacity: 0, x: 24 },
-      animate: { opacity: 1, x: 0 },
-      exit: { opacity: 0, x: -24 },
-    };
-  }
-
-  return {
-    initial: { opacity: 0, scale: isImage && kenBurns ? 1.03 : 1 },
-    animate: { opacity: 1, scale: 1 },
-    exit: { opacity: 0, scale: isImage && kenBurns ? 1.01 : 1 },
-  };
-}
-
-function keyOf(item: MediaItem) {
-  return `${item.type}:${item.src}`;
-}
-
 type IncomingState = {
   idx: number;
   item: MediaItem;
   key: string;
   ready: boolean;
 };
-
-function prefetchMedia(item: MediaItem) {
-  if (!item) return;
-  if (item.type === "image") {
-    const img = new Image();
-    img.src = item.src;
-  } else {
-    fetch(item.src, { method: "HEAD" }).catch(() => {});
-  }
-}
 
 export function Slideshow({
   items,
@@ -146,14 +71,11 @@ export function Slideshow({
   const shownIsImage = shownItem?.type === "image";
   const shownIsVideo = shownItem?.type === "video";
 
-  // Preload item kế tiếp
   useEffect(() => {
     if (!safeLen) return;
     const nextI = nextIndex(shownIdx, safeLen);
     const itemToPreload = items[order[nextI]];
-    if (itemToPreload) {
-      prefetchMedia(itemToPreload);
-    }
+    if (itemToPreload) prefetchMedia(itemToPreload);
   }, [shownIdx, safeLen, order, items]);
 
   const scheduleNext = (nextI: number) => {
@@ -170,88 +92,56 @@ export function Slideshow({
     scheduleNext(nextIndex(shownIdx, safeLen));
   };
 
-  // Xử lý incoming media
   useEffect(() => {
     if (!incoming) return;
 
     let cancelled = false;
-    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+    const timeoutMs = incoming.item.type === "video" ? 3000 : 2000;
 
     const markReady = () => {
       if (cancelled) return;
-      if (fallbackTimer) clearTimeout(fallbackTimer);
       setIncoming((p) => (p && !p.ready ? { ...p, ready: true } : p));
     };
 
-    const timeoutMs = incoming.item.type === "video" ? 3000 : 2000;
-    fallbackTimer = setTimeout(() => {
-      console.warn("Media load timeout");
-      markReady();
-    }, timeoutMs);
+    const fallback = setTimeout(markReady, timeoutMs);
 
     if (incoming.item.type === "image") {
       const img = new Image();
-      img.onload = () => {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(markReady);
-        });
-      };
+      img.onload = () =>
+        requestAnimationFrame(() => requestAnimationFrame(markReady));
       img.onerror = markReady;
       img.src = incoming.item.src;
       return () => {
         cancelled = true;
-        if (fallbackTimer) clearTimeout(fallbackTimer);
+        clearTimeout(fallback);
       };
     }
 
-    // VIDEO: Load và đợi sẵn sàng
     const el = incomingVideoRef.current;
     if (!el) return;
 
-    const prepareVideo = async () => {
+    (async () => {
       try {
-        // Set src và load
         el.src = incoming.item.src;
         el.load();
-
-        // Đợi có đủ data
-        await new Promise<void>((resolve, reject) => {
-          const onReady = () => {
-            cleanup();
-            resolve();
-          };
-          const onErr = () => {
-            cleanup();
-            reject();
-          };
-          const cleanup = () => {
-            el.removeEventListener("loadeddata", onReady);
-            el.removeEventListener("error", onErr);
-          };
-          el.addEventListener("loadeddata", onReady);
-          el.addEventListener("error", onErr);
-        });
-
+        await waitVideoReady(el, timeoutMs);
         if (!cancelled) markReady();
-      } catch (err) {
-        console.warn("Video prepare error:", err);
+      } catch {
         if (!cancelled) markReady();
+      } finally {
+        clearTimeout(fallback);
       }
-    };
-
-    prepareVideo();
+    })();
 
     return () => {
       cancelled = true;
-      if (fallbackTimer) clearTimeout(fallbackTimer);
+      clearTimeout(fallback);
     };
   }, [incoming?.key]);
 
-  // Swap sau khi ready
   useEffect(() => {
     if (!incoming?.ready) return;
 
-    // Pause video cũ trước khi transition
     if (shownIsVideo && activeVideoRef.current) {
       activeVideoRef.current.pause();
     }
@@ -264,7 +154,6 @@ export function Slideshow({
     return () => clearTimeout(t);
   }, [incoming?.ready, incoming?.idx, shownIsVideo]);
 
-  // Auto timer cho IMAGE
   useEffect(() => {
     if (!playing || !shownIsImage) return;
     if (!safeLen || safeLen <= 1) return;
@@ -281,29 +170,30 @@ export function Slideshow({
       }
       timerRef.current = setTimeout(tick, 16);
     };
+
     timerRef.current = setTimeout(tick, 16);
+
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = null;
     };
   }, [playing, shownIsImage, intervalSec, safeLen, shownIdx, incoming?.key]);
 
-  // Active video play/pause
   useEffect(() => {
     const el = activeVideoRef.current;
     if (!el || !shownIsVideo) return;
+
     if (!playing || incoming?.ready) {
       el.pause();
       return;
     }
 
-    // Đợi một chút để đảm bảo element đã mount
-    const timer = setTimeout(() => {
+    const t = setTimeout(() => {
       const r = el.play();
       if (r instanceof Promise) r.catch(() => {});
-    }, 150);
+    }, 0);
 
-    return () => clearTimeout(timer);
+    return () => clearTimeout(t);
   }, [playing, shownIsVideo, shownKey, incoming?.ready]);
 
   const handleVideoEnded = () => {
@@ -319,55 +209,32 @@ export function Slideshow({
     shownItem.type === "image",
     kenBurns,
   );
+
   const incomingTriplet = incoming
     ? getMotionTriplet(transitionMode, incoming.item.type === "image", kenBurns)
     : null;
 
-  const layerStyle: React.CSSProperties = {
-    position: "absolute",
-    inset: 0,
-    willChange: "opacity, transform",
-    transform: "translateZ(0)",
-    transformStyle: transitionMode === "flip" ? "preserve-3d" : undefined,
-  };
-
-  const videoStyle: React.CSSProperties = {
-    width: "100%",
-    height: "100%",
-    objectFit: "cover",
-    display: "block",
-    backgroundColor: "black",
-    pointerEvents: "none",
-  };
+  const layerClass =
+    transitionMode === "flip"
+      ? "slideshow-layer slideshow-layer--flip"
+      : "slideshow-layer";
 
   return (
-    <div
-      style={{
-        position: "relative",
-        height: "100%",
-        overflow: "hidden",
-        backgroundColor: "black",
-      }}
-    >
-      <style>{NO_CONTROLS_STYLE}</style>
-
-      {/* SHOWN ITEM */}
+    <div className="slideshow-root slideshow-no-controls">
       <motion.div
         key={shownKey}
-        style={layerStyle}
+        className={layerClass}
         initial={shownTriplet.animate}
         animate={incoming?.ready ? shownTriplet.exit : shownTriplet.animate}
         transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+        style={{
+          transformStyle: transitionMode === "flip" ? "preserve-3d" : undefined,
+        }}
       >
         {shownItem.type === "image" ? (
           <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              backgroundImage: `url(${shownItem.src})`,
-              backgroundSize: "cover",
-              backgroundPosition: "center",
-            }}
+            className="slideshow-img"
+            style={{ backgroundImage: `url(${shownItem.src})` }}
           />
         ) : (
           <video
@@ -383,18 +250,22 @@ export function Slideshow({
             preload="auto"
             controls={false}
             onEnded={handleVideoEnded}
-            style={videoStyle}
+            className="slideshow-video"
             disablePictureInPicture
             disableRemotePlayback
           />
         )}
       </motion.div>
 
-      {/* INCOMING ITEM */}
       {incoming && incomingTriplet && (
         <motion.div
           key={incoming.key}
-          style={{ ...layerStyle, opacity: incoming.ready ? 1 : 0 }}
+          className={layerClass}
+          style={{
+            opacity: incoming.ready ? 1 : 0,
+            transformStyle:
+              transitionMode === "flip" ? "preserve-3d" : undefined,
+          }}
           initial={incomingTriplet.initial}
           animate={
             incoming.ready ? incomingTriplet.animate : incomingTriplet.initial
@@ -403,13 +274,8 @@ export function Slideshow({
         >
           {incoming.item.type === "image" ? (
             <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                backgroundImage: `url(${incoming.item.src})`,
-                backgroundSize: "cover",
-                backgroundPosition: "center",
-              }}
+              className="slideshow-img"
+              style={{ backgroundImage: `url(${incoming.item.src})` }}
             />
           ) : (
             <video
@@ -424,7 +290,7 @@ export function Slideshow({
               loop={false}
               preload="auto"
               controls={false}
-              style={videoStyle}
+              className="slideshow-video"
               disablePictureInPicture
               disableRemotePlayback
             />
@@ -432,19 +298,10 @@ export function Slideshow({
         </motion.div>
       )}
 
-      {/* Overlay */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          pointerEvents: "none",
-          background:
-            "linear-gradient(to bottom, rgba(0,0,0,.55), rgba(0,0,0,0) 32%, rgba(0,0,0,0) 68%, rgba(0,0,0,.7))",
-        }}
-      />
+      <div className="slideshow-overlay" />
       <div
         onDoubleClick={() => onPlayingChange(true)}
-        style={{ position: "absolute", inset: 0, background: "transparent" }}
+        className="slideshow-capture"
       />
     </div>
   );
