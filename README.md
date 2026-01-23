@@ -1,73 +1,123 @@
-# React + TypeScript + Vite
+# Red Slideshow App
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A fullscreen, ultra-smooth slideshow application built with **React + Framer Motion**, designed for **kiosk, TV, tablet, and mobile displays**.  
+The app supports **images and videos**, cinematic transitions, and a hidden settings panel for clean presentation.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## ✨ Key Features
 
-## React Compiler
+### 🎞️ Media Playback
+- Supports mixed playlists:
+  - Images: png, jpg, jpeg, webp, avif
+  - Videos: mp4, webm
+- Images advance automatically after a configurable interval
+- Videos always play to completion before advancing
+- Seamless image → video switching with first-frame video preloading
+- No visible loading state or fallback UI during transitions
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the ESLint configuration
+### 🎬 Transition Effects
+Available transition modes:
+- Crossfade – clean, safe default
+- Slide – horizontal motion
+- Flip – 3D page-flip effect
+- Zoom – cinematic push / pull zoom
+- Pan – subtle horizontal movement
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+---
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### 🖥️ Fullscreen & Responsive
+- True fullscreen rendering (no margins, no scroll)
+- Automatically adapts to portrait / landscape
+- Works on mobile, tablet, TV, and kiosk screens
+- Media uses object-fit: cover to avoid distortion
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+---
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### ⚙️ Hidden Settings Panel
+- Clean presentation screen with no visible UI
+- Settings panel is opened by double click / double tap
+- Settings include:
+  - Play / Pause
+  - Image interval
+  - Transition mode
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+This ensures the slideshow remains distraction-free during playback.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+---
+
+### 🚀 Performance & Stability
+- Preloads the next image or video before transition
+- Videos are displayed only after the first decoded frame is ready
+- Prevents black frames and default video play icons
+- No unnecessary re-renders
+- Stable on Android WebView (Capacitor)
+
+---
+
+## 🧱 Tech Stack
+- React
+- TypeScript
+- Framer Motion
+- Vite
+- Capacitor
+
+---
+
+## 📂 Media Management
+
+### Local (Current)
+Place media files in:
+
+src/assets/slides/
+
+Supported formats:
+png, jpg, jpeg, webp, avif, mp4, webm
+
+Media files are automatically discovered and ordered by filename.
+
+---
+
+### Remote (Future-ready)
+The app architecture allows easy migration to a remote source.
+
+To switch to API-based media:
+- Replace the local loader with an API call
+- Server returns a list of media items in the following format:
+
+[
+  { "type": "image", "src": "https://example.com/a.jpg" },
+  { "type": "video", "src": "https://example.com/b.mp4", "muted": true }
+]
+
+No changes are required in the slideshow engine.
+
+---
+
+## 🧪 Usage
+
+Development:
+yarn install  
+yarn dev  
+
+Build:
+yarn build  
+
+Android (Capacitor):
+npx cap add android  
+npx cap sync android  
+npx cap open android  
+
+---
+
+## 🧠 Design Philosophy
+- Media-first: content is the interface
+- No clutter: controls are hidden unless invoked
+- Cinematic motion without distraction
+
+---
+
+
